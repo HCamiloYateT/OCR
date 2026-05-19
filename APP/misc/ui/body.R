@@ -3,21 +3,18 @@ body <- bs4DashBody(
   use_waiter(),
   useShinyjs(),
   bs4TabItems(
-    # Cámara de Comercio de Bogotá ----
-    bs4TabItem(tabName = "ccb",
-      fluidRow(column(width = 12,
-                      tags$div(class = "d-flex align-items-center mb-3", 
-                               tags$div(
-                                 tags$h4(class = "mb-0",
+    bs4TabItem(tabName = "camaras",
+               fluidRow(
+                 column(width = 12,
+                        tags$div(class = "d-flex flex-column mb-3",
+                                 tags$h4(class = "mb-1",
                                          "Certificado de Existencia y Representación Legal"),
                                  tags$small(class = "text-muted",
-                                            "Cámara de Comercio de Bogotá"
-                                            )
+                                            "Multi-cámara — texto y escaneados")
                                  )
-                               )
-                      )
-               ),
-      CCBUI("ccb")
-      )
+                        )
+                 ),
+               CamarasUI("camaras")
+               )
     )
   )

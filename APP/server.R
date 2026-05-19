@@ -13,6 +13,6 @@ function(input, output, session) {
     FormatearTexto(paste(usuario()) %>% HTML, negrita = T, tamano_pct = 0.75, alineacion = "center", color = "#999")
   })
   ## Cuerpo ----
-  CCB("ccb")
+  Camaras("camaras")
   }
 

@@ -75,7 +75,8 @@ library("racafeModulos")
 racafeCore::Loadpkg(c("shiny", "bs4Dash", "shinyBS", "shinyjs", "DT", "shinycssloaders",
                       "shinyWidgets", "tidyverse", "gt",  "scales", "plotly",  "rlang",
                       "waiter", "glue", "lubridate", "stringr", "purrr", "pdftools", 
-                      "httr2", "jsonlite"))
+                      "httr2", "jsonlite", "pdftools", "magick", "openxlsx", 
+                      "reactable"))
 
 # Impresiones ----
 tit_app <- "Lector OCR"
