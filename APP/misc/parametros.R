@@ -81,6 +81,7 @@ CARGO_TO_ROLE <- c(
   "REVISOR FISCAL"                                                = "REVISOR_FISCAL",
   "FIRMA REVISORA"                                                = "REVISOR_FISCAL",
   "GERENTE SUPLENTE"                                              = "GERENTE_SUPLENTE",
+  "SUPLENTE"                                                      = "GERENTE_SUPLENTE",
   "SUPLENTE DEL GERENTE"                                          = "GERENTE_SUPLENTE",
   "SUBGERENTE"                                                    = "GERENTE_SUPLENTE",
   "GERENTE"                                                       = "GERENTE",
@@ -133,16 +134,13 @@ RENGLON_PAT <- paste0(
 PERSON_PAT <- paste0(
   "^([A-Z][A-Z ]+?)\\s+",
   "(C\\.C\\.|C\\.E\\.|NIT|PPT|PEP|RC\\b|TI\\b|CD\\b|PA\\b)",
-  "\\.?\\s*(?:NO\\.?\\s*)?(\\d[\\d.]*)"
+  "\\.?\\s*(?:N[Oo]\\.?\\s*)?(\\d[\\d.]*)"
 )
 
 
 # Orden de nombres por cámara ----
-# "AP_NOM" = Apellidos primero (CCB estándar, CCB Pardo)
-# "NOM_AP" = Nombres primero (CCH Huila, CCC Casanare, CCB Alcamar-variante)
-# NOTA CCC: la Cámara de Casanare lista nombres primero (ej. ROCIO DEL PILAR SILVA ARANGUREN)
 ORDEN_NOMBRES_CAMARA <- c(
-  CCB  = "AP_NOM",
+  CCB  = "AUTO",  
   CCH  = "NOM_AP",
   CCC  = "NOM_AP",
   CCM  = "AP_NOM",

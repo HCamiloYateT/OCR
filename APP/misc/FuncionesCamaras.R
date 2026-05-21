@@ -51,18 +51,82 @@ normalize_line <- function(x) {
 # Verifica si un token es una partícula que puede formar parte de un apellido compuesto
 .es_particula <- function(tok) toupper(tok) %in% PARTICULAS_APELLIDO
 
+# Detecta el orden de tokens en un vector de nombres completos usando LLM.
+.detectar_orden_llm <- function(full_names,
+                                api_key = Sys.getenv("OPENAI_API_KEY"),
+                                model   = OPENAI_MODEL_DEF) {
+  # Resultado por defecto conservador
+  resultado <- setNames(rep("AP_NOM", length(full_names)), full_names)
+  if (length(full_names) == 0L || nchar(api_key) < 10L) return(resultado)
+  
+  # Construir prompt con los nombres numerados
+  nombres_txt <- paste(seq_along(full_names), full_names, sep = ". ", collapse = "\n")
+  prompt_sistema <- paste0(
+    "Eres un experto en onomastica colombiana y registros mercantiles.\n",
+    "Para cada nombre completo determina si esta en orden:\n",
+    "- \"AP_NOM\": APELLIDOS primero, luego nombres ",
+    "(ej: GARCIA LOPEZ SANDRA MILENA)\n",
+    "- \"NOM_AP\": NOMBRES primero, luego apellidos ",
+    "(ej: SANDRA MILENA GARCIA LOPEZ)\n\n",
+    "Reglas:\n",
+    "1. Los apellidos colombianos son heredados ",
+    "(GARCIA, LOPEZ, PARDO, SANCHEZ, ANZOLA, AVELLANEDA...)\n",
+    "2. Los nombres propios son dados al nacer ",
+    "(Sandra, Milena, Alvaro, Carmenza, Luis, Eduardo...)\n",
+    "3. Particulas como DE, DEL, DE LA forman parte del apellido compuesto\n",
+    "4. Devuelve UNICAMENTE un JSON array valido, sin markdown ni texto extra\n",
+    "5. Formato exacto por elemento: ",
+    "{\"full_name\":\"...\",\"orden\":\"AP_NOM\"}"
+  )
+  
+  json_raw <- tryCatch({
+    resp <- httr::POST(
+      url    = OPENAI_ENDPOINT,
+      httr::add_headers(Authorization  = paste("Bearer", api_key),
+                        `Content-Type` = "application/json"),
+      body   = jsonlite::toJSON(list(
+        model       = model,
+        temperature = 0,
+        messages    = list(
+          list(role = "system", content = prompt_sistema),
+          list(role = "user",   content = nombres_txt)
+        )
+      ), auto_unbox = TRUE),
+      encode = "raw"
+    )
+    httr::stop_for_status(resp)
+    httr::content(resp, as = "parsed", encoding = "UTF-8")$choices[[1]]$message$content
+  }, error = function(e) {
+    message(sprintf("[orden_llm] Error API: %s — usando AP_NOM como fallback.",
+                    conditionMessage(e)))
+    NULL
+  })
+  
+  if (is.null(json_raw)) return(resultado)
+  
+  # Parsear respuesta y mapear full_name → orden
+  items <- tryCatch({
+    clean <- str_replace_all(json_raw, "```json|```", "") %>% str_trim()
+    jsonlite::fromJSON(clean, simplifyVector = FALSE)
+  }, error = function(e) {
+    message(sprintf("[orden_llm] Error parse JSON: %s", conditionMessage(e)))
+    NULL
+  })
+  
+  if (is.null(items) || length(items) == 0L) return(resultado)
+  
+  for (it in items) {
+    fn    <- it$full_name %||% ""
+    orden <- it$orden     %||% "AP_NOM"
+    if (nzchar(fn) && fn %in% names(resultado) &&
+        orden %in% c("AP_NOM", "NOM_AP")) {
+      resultado[fn] <- orden
+    }
+  }
+  resultado
+}
+
 # Descompone un nombre completo en pa/sa/pn/sn según el orden de la cámara.
-#
-# orden = "NOM_AP" (nombres primero — CCC, CCH y variantes):
-#   Los apellidos están al FINAL. Las 2 últimas palabras son los apellidos,
-#   pero si la penúltima es una partícula (DE, DEL, DE LA…) se extiende el
-#   apellido hacia la izquierda hasta encontrar un token que no sea partícula.
-#   Ej: MARIA DE LA ROSA PEREZ → pa="DE LA ROSA" sa="PEREZ" pn="MARIA"
-#   Ej: ROCIO DEL PILAR SILVA ARANGUREN → pa="SILVA" sa="ARANGUREN" pn="ROCIO" sn="DEL PILAR"
-#
-# orden = "AP_NOM" (apellidos primero — CCB formal, mayoría):
-#   Los apellidos están al INICIO. Split clásico: pa sa pn sn.
-#   Ej: PARDO RAMIREZ SANTIAGO → pa="PARDO" sa="RAMIREZ" pn="SANTIAGO"
 split_name_by_camara <- function(full_name, orden = "AP_NOM") {
   parts <- str_split(str_trim(full_name), "\\s+")[[1]]
   n     <- length(parts)
@@ -155,7 +219,10 @@ extract_pdf_text <- function(pdf_path) {
   pdftools::pdf_text(pdf_path) %>%
     paste(collapse = "\n") %>%
     str_replace_all(
-      regex("C[aá]mara de Comercio.*?-{60,}\\s*", dotall = TRUE, ignore_case = TRUE), "\n"
+      regex(
+        "(?m)^C[aá]mara de Comercio de Bogot[aá]\\s*\\nSede Virtual.*?-{60,}\\s*",
+        dotall = TRUE, ignore_case = TRUE
+      ), "\n"
     ) %>%
     str_replace_all("[ \t]+", " ") %>%
     str_replace_all("\n{3,}", "\n\n")
@@ -180,8 +247,9 @@ extract_nombramientos_block <- function(text) {
 
 limpiar_texto_cerl <- function(texto, codigo_camara = "CCB") {
   patron <- switch(codigo_camara,
-                   CCB = regex("C[aá]mara de Comercio.*?-{40,}\\s*",
-                               dotall = TRUE, ignore_case = TRUE),
+                   CCB = regex("(?m)^C[aá]mara de Comercio de Bogot[aá]\\s*\\nSede Virtual.*?-{40,}\\s*",
+                               dotall = TRUE, ignore_case = TRUE
+                               ),
                    CCH = regex("C[aá]MARA DE COMERCIO DEL HUILA.*?CODIGO DE VERIFICACI[oó]N[^\n]+\n",
                                dotall = TRUE, ignore_case = TRUE),
                    CCC = regex("C[aá]MARA DE COMERCIO DE CASANARE.*?CODIGO DE VERIFICACI[oó]N[^\n]+\n",
@@ -240,8 +308,6 @@ parse_person_line <- function(ln) {
        doc_num   = clean_id(m[1L, 4L]))
 }
 
-# parse_combined_line: cargo + persona en la misma línea (formato tabular).
-# BUG ANTERIOR corregido: str_starts + fixed() no funcionaba — se usa str_detect + regex_escape.
 parse_combined_line <- function(ln) {
   cargos <- names(CARGO_TO_ROLE)[order(-nchar(names(CARGO_TO_ROLE)))]
   for (cargo_key in cargos) {
@@ -251,6 +317,16 @@ parse_combined_line <- function(ln) {
     person <- parse_person_line(resto)
     if (!is.null(person) && nzchar(person$doc_num)) {
       return(list(role      = unname(CARGO_TO_ROLE[cargo_key]),
+                  full_name = person$full_name,
+                  doc_type  = person$doc_type,
+                  doc_num   = person$doc_num))
+    }
+  }
+  if (str_starts(ln, "SUPLENTE ")) {
+    resto  <- str_trim(str_remove(ln, "^SUPLENTE\\s+"))
+    person <- parse_person_line(resto)
+    if (!is.null(person) && nzchar(person$doc_num)) {
+      return(list(role      = "GERENTE_SUPLENTE",
                   full_name = person$full_name,
                   doc_type  = person$doc_type,
                   doc_num   = person$doc_num))
@@ -286,7 +362,7 @@ parse_block_contextual <- function(block) {
     ln <- normalize_line(raw_line)
     if (!nzchar(ln)) next
     if (str_detect(ln, "^(NOMBRE|CARGO)\\s+(NOMBRE|IDENTIFICACI)")) next
-    if (str_detect(ln, "^CARGO\\s+NOMBRE\\s+IDENTIFICACION")) next
+    if (str_detect(ln, "^CARGO(\\s+NOMBRE(\\s+IDENTIFICACI)?)?$")) next
     
     # P1: cargo + persona en la misma línea (tabular)
     combined <- parse_combined_line(ln)
@@ -802,17 +878,36 @@ procesar_cerl <- function(pdf_path,
 # 11. Construcción del df de cargue ----
 
 # Convierte items a data.frame normalizado.
-# Personas jurídicas (NIT) → razon_social; naturales → nombres/apellidos por orden de cámara.
-# Roles no mapeados en ROLE_TO_ADMIN_CODE se descartan (con mensaje en log).
-# Roles en ROLES_DESCARTAR se silencian completamente (sin warning al usuario).
-build_admin_df <- function(items, codigo_camara = "CCB") {
-  orden <- .orden_por_camara(codigo_camara)
-  rows  <- lapply(items, function(it) {
+build_admin_df <- function(items,
+                           codigo_camara = "CCB",
+                           api_key       = Sys.getenv("OPENAI_API_KEY"),
+                           model         = OPENAI_MODEL_DEF) {
+  orden_camara <- .orden_por_camara(codigo_camara)
+  
+  # Si la cámara usa AUTO, resolver el orden de todos los nombres
+  # en un solo call LLM antes del lapply — evita N llamadas individuales
+  orden_por_nombre <- NULL
+  if (orden_camara == "AUTO") {
+    nombres_naturales <- items %>%
+      lapply(function(it) {
+        dt <- toupper(it$doc_type %||% "")
+        if (dt %in% DOC_TYPES_JURIDICA) return(NULL)
+        fn <- str_trim(it$full_name %||% "")
+        if (nzchar(fn)) fn else NULL
+      }) %>%
+      Filter(Negate(is.null), .) %>%
+      unlist() %>%
+      unique()
+    if (length(nombres_naturales) > 0L) {
+      orden_por_nombre <- .detectar_orden_llm(nombres_naturales, api_key, model)
+    }
+  }
+  
+  rows <- lapply(items, function(it) {
     role     <- it$role     %||% ""
     doc_type <- toupper(it$doc_type %||% "")
-    # Descartar roles explícitamente excluidos (ASISTENTE_ADMINISTRATIVO, etc.)
     if (role %in% ROLES_DESCARTAR) {
-      message(sprintf("[DESCARTADO] Rol '%s' no corresponde a cargo de administración.", role))
+      message(sprintf("[DESCARTADO] Rol '%s' no corresponde a cargo.", role))
       return(NULL)
     }
     admin_code <- ROLE_TO_ADMIN_CODE[role]
@@ -827,7 +922,14 @@ build_admin_df <- function(items, codigo_camara = "CCB") {
       nm           <- list(pa = "", sa = "", pn = "", sn = "")
       razon_social <- str_trim(it$full_name %||% "")
     } else {
-      nm           <- split_name_by_camara(it$full_name %||% "", orden = orden)
+      # Resolver orden: AUTO usa el mapa pre-calculado; resto usa valor fijo
+      orden_efectivo <- if (orden_camara == "AUTO") {
+        fn <- str_trim(it$full_name %||% "")
+        unname(orden_por_nombre[fn] %||% "AP_NOM")
+      } else {
+        orden_camara
+      }
+      nm           <- split_name_by_camara(it$full_name %||% "", orden = orden_efectivo)
       razon_social <- NA_character_
     }
     data.frame(

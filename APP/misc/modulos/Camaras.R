@@ -151,33 +151,6 @@ Camaras <- function(id) {
         width  = NULL,
         status = "success",
         tags$p(proc$mensaje),
-        
-        if (length(val$advertencias) > 0L)
-          tags$div(class = "mb-2",
-                   lapply(val$advertencias, function(adv)
-                     tags$p(class = "mb-1 small text-warning",
-                            icon("triangle-exclamation"), " ", adv))),
-        
-        .resumen_extraccion(ext),
-        tags$hr(class = "my-2"),
-        
-        tags$div(class = "small text-muted",
-                 if (ext$metodo == "dual") {
-                   tagList(
-                     tags$span(icon("code"),  " Regex: ", ext$mensaje_regex), tags$br(),
-                     tags$span(icon("robot"), " LLM: ",   ext$mensaje_llm)
-                   )
-                 } else {
-                   tags$span(icon("robot"), " Vision LLM: ", ext$mensaje_llm)
-                 }
-        ),
-        
-        tags$hr(class = "my-2"),
-        tags$div(class = "small text-muted",
-                 icon("arrow-right-arrow-left"), " Orden de nombres: ",
-                 tags$b(.label_orden_nombres(proc$camara$codigo))
-        ),
-        tags$hr(class = "my-2"),
         .badge_tiempo(proc$tiempo_seg)
       )
     })
