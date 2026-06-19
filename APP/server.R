@@ -14,5 +14,6 @@ function(input, output, session) {
   })
   ## Cuerpo ----
   Camaras("camaras")
+  RutServer("mod_rut")
   }
 

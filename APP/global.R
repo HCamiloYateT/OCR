@@ -1,7 +1,7 @@
 # Configuraciones Iniciales ----
 ## Variables de control
 # Flags de entorno para comportamiento en produccion vs desarrollo
-verbose <- FALSE
+verbose <- TRUE
 debug   <- FALSE
 
 ## Configuracion regional y del sistema
